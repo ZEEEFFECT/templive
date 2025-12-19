@@ -1,0 +1,453 @@
+Below is a practical CBA (Certificate-Based Authentication) test pack you can use for Microsoft Entra ID plus the common relying parties you mentioned: Exchange hybrid, Azure Portal, Teams, and Microsoft 365 (Office.com / O365 apps). I’m assuming Microsoft Entra CBA (not “AD FS only” smartcard) and that you’re using Conditional Access to require/allow certificates.
+
+
+---
+
+1) Basic Entra ID CBA login scenarios (core)
+
+A. Happy-path interactive sign-in
+
+1. CBA success – correct user cert
+
+Preconditions: Entra CBA enabled; cert chain trusted; user cert mapped (UPN/SAN or altSecurityIdentities); CA policy allows CBA.
+
+Steps: Browse to https://myaccount.microsoft.com → sign in → select certificate.
+
+Expected: Sign-in succeeds; Entra sign-in logs show Authentication Method = Certificate; CA applied as expected.
+
+
+
+2. CBA success – multiple certs presented
+
+Steps: User has 2 valid certs (correct + other) → sign in → select correct cert.
+
+Expected: Succeeds only with correct cert; wrong selection fails with clear error.
+
+
+
+3. CBA success – cert with UPN in SAN
+
+Expected: Correct mapping; no prompt to “pick account” (depends on config).
+
+
+
+4. CBA success – cert mapped via altSecurityIdentities
+
+Expected: Sign-in succeeds and logs show cert auth.
+
+
+
+
+B. Negative / security scenarios
+
+5. Invalid chain – untrusted issuer
+
+Steps: Present cert issued by non-trusted CA.
+
+Expected: Authentication fails; logs indicate untrusted chain.
+
+
+
+6. Expired certificate
+
+Expected: Fails; clear “expired” reason in logs.
+
+
+
+7. Revoked certificate (CRL/OCSP reachable)
+
+Expected: Fails; revocation reason appears in logs.
+
+
+
+8. Revocation check unreachable
+
+Expected: Behavior matches your configured policy (fail-open vs fail-closed). Document expected result explicitly.
+
+
+
+9. Certificate doesn’t map to a user
+
+Steps: Valid cert but no mapping to Entra identity.
+
+Expected: Fails; “no matching user” type result.
+
+
+
+10. Wrong user cert (maps to different user)
+
+
+
+Expected: Entra signs in as mapped identity; verify this is blocked if your policy requires the intended user context (common governance test).
+
+
+11. Key usage mismatch
+
+
+
+Steps: Present cert without Client Authentication EKU (or wrong template).
+
+Expected: Fails.
+
+
+12. Private key not accessible
+
+
+
+Steps: Cert present but key missing/not accessible (bad install).
+
+Expected: Fails with client-side error; no successful sign-in.
+
+
+C. Conditional Access + MFA interaction scenarios
+
+13. CBA satisfies MFA (if configured)
+
+
+
+Steps: CA policy requires MFA; confirm whether CBA counts as MFA in your tenant settings/policy design.
+
+Expected: Either (a) CBA alone satisfies, or (b) user still prompted for additional factor — verify intended outcome.
+
+
+14. CBA + compliant device required
+
+
+
+Preconditions: Intune device compliance + CA.
+
+Expected: Compliant device passes; non-compliant blocked (even with valid cert).
+
+
+15. CBA blocked from unmanaged device
+
+
+
+Steps: Attempt from unmanaged BYOD.
+
+Expected: Block or limited session per CA.
+
+
+16. Location-based policy
+
+
+
+Steps: Allowed location succeeds; disallowed location blocked (still with valid cert).
+
+
+D. Risk / Identity Protection (if used)
+
+17. High sign-in risk blocks CBA
+
+
+
+Expected: Block or require remediation even though certificate is valid.
+
+
+18. User risk policy triggers password reset
+
+
+
+Expected: Verify flow (note: CBA users may have specific remediation UX constraints).
+
+
+
+---
+
+2) Azure Portal (portal.azure.com) CBA test cases
+
+19. Azure Portal interactive sign-in with CBA
+
+
+
+Steps: Go to https://portal.azure.com → sign in with cert.
+
+Expected: Portal loads; correct tenant/subscription context; sign-in logs show CBA.
+
+
+20. Tenant switch after CBA sign-in
+
+
+
+Steps: Switch directory in portal.
+
+Expected: Works; no unexpected re-prompt loops.
+
+
+21. RBAC validation
+
+
+
+Steps: Try to access a resource you have Reader vs no access.
+
+Expected: RBAC enforced normally; CBA doesn’t bypass authorization.
+
+
+22. CA “require device compliance” for Azure Portal
+
+
+
+Expected: Non-compliant blocked with CA message.
+
+
+23. Continuous Access Evaluation / token refresh
+
+
+
+Steps: Change user’s access (remove role) → refresh portal session.
+
+Expected: Access removed within expected time.
+
+
+
+---
+
+3) Microsoft 365 (Office.com + O365 apps) CBA test cases
+
+24. Office.com sign-in
+
+
+
+Steps: https://www.office.com → CBA.
+
+Expected: Lands on M365 home; sign-in logs show CBA.
+
+
+25. Exchange Online web (OWA)
+
+
+
+Steps: https://outlook.office.com → CBA.
+
+Expected: Mailbox opens.
+
+
+26. SharePoint Online
+
+
+
+Steps: Open SharePoint site.
+
+Expected: Access works; no extra prompts unless CA requires.
+
+
+27. OneDrive for Business
+
+
+
+Expected: OneDrive opens; file upload/download works.
+
+
+28. Modern auth app sign-in (Word/Excel desktop)
+
+
+
+Steps: Sign into Office desktop apps.
+
+Expected: Works, tokens issued; verify no fallback to password.
+
+
+29. Legacy auth blocked (baseline)
+
+
+
+Steps: Attempt a legacy protocol (if enabled for testing) like basic auth (should be disabled).
+
+Expected: Blocked.
+
+
+30. Session controls
+
+
+
+Steps: Apply “Sign-in frequency” or “persistent browser session” settings.
+
+Expected: Behavior matches policy.
+
+
+
+---
+
+4) Microsoft Teams (desktop + web + mobile) CBA test cases
+
+Teams Web
+
+31. Teams web sign-in (teams.microsoft.com)
+
+
+
+Expected: CBA works; chat/calls available.
+
+
+32. Teams web + CA requiring compliant device
+
+
+
+Expected: Browser session blocked/limited as per policy.
+
+
+Teams Desktop (Windows/macOS)
+
+33. Teams desktop first-time sign-in
+
+
+
+Expected: Sign-in completes; verify whether cert selection is prompted or handled by OS/cert store.
+
+
+34. Token renewal / restart app
+
+
+
+Steps: Close Teams → reopen.
+
+Expected: No unexpected loops; reauth occurs per policy.
+
+
+35. Teams meeting join from link
+
+
+
+Steps: Join meeting link signed in vs signed out.
+
+Expected: Signed-in join works; signed-out prompts and respects CBA/CA.
+
+
+Teams Mobile (iOS/Android)
+
+36. Mobile Teams sign-in with CBA (if supported in your design)
+
+
+
+Expected: Either works (via broker/managed device/cert deployment) or fails by design; document the supported stance.
+
+
+
+---
+
+5) Exchange Hybrid scenarios (hybrid identity + mail flow + auth)
+
+> Hybrid has multiple “boundaries”: user authentication (Entra) vs mail routing (connectors) vs EWS/Autodiscover vs on-prem access. These tests focus on “does CBA break user access to mailbox features in hybrid”.
+
+
+
+37. Hybrid user accesses Exchange Online mailbox via OWA with CBA
+
+
+
+Expected: Works; no hybrid redirect weirdness.
+
+
+38. Hybrid user accesses on-prem mailbox (if still on-prem)
+
+
+
+Steps: OWA on-prem / published endpoint.
+
+Expected: If auth is on-prem (e.g., AD FS/WAP), Entra CBA may not apply; verify intended auth path.
+
+
+39. Autodiscover for Outlook (hybrid)
+
+
+
+Steps: Configure Outlook profile.
+
+Expected: Autodiscover completes; no repeated prompts.
+
+
+40. Free/Busy cross-premises
+
+
+
+Expected: Works (this is more federation/OAuth config than CBA, but CBA changes can surface issues).
+
+
+41. EWS access (if used by apps)
+
+
+
+Expected: App access works with modern auth; CA policies don’t unintentionally block service principals.
+
+
+42. SMTP AUTH / legacy protocols disabled
+
+
+
+Expected: Confirm legacy is blocked; CBA doesn’t re-enable legacy flows.
+
+
+
+---
+
+6) Admin / operational tests (must-have in real CBA rollouts)
+
+43. Break-glass admin account not dependent on CBA
+
+
+
+Expected: Emergency account can sign in via alternate method per your policy (highly restricted, monitored).
+
+
+44. Certificate rollover
+
+
+
+Steps: Issue new cert; old still valid; test both.
+
+Expected: Both behave per planned overlap window; no lockout.
+
+
+45. CRL/OCSP dependency test
+
+
+
+Steps: Simulate outage of revocation endpoints (where feasible).
+
+Expected: Matches your documented security stance.
+
+
+46. Logging & monitoring
+
+
+
+Steps: Validate Entra sign-in logs show cert auth; send to Sentinel/Log Analytics.
+
+Expected: Alerts/detections fire (e.g., unusual location with cert auth).
+
+
+47. Helpdesk runbook test
+
+
+
+Steps: User can’t access cert; validate recovery path (temporary access pass, alternate method, re-issuance).
+
+Expected: Recovery works without weakening policy permanently.
+
+
+
+---
+
+7) Quick “test case template” you can paste into your test management tool
+
+Use this structure per case:
+
+ID / Title
+
+Objective
+
+Preconditions (tenant config, CA policy, device state, user/cert attributes)
+
+Steps
+
+Expected result
+
+Evidence (screenshot, Entra sign-in log event ID, CA policy name applied)
+
+Pass/Fail notes
+
+
+
+---
+
+If you tell me (1) whether your CBA is cloud-only Entra CBA or involves AD FS, (2) how you map certs (UPN in SAN vs altSecurityIdentities), and (3) whether you expect CBA to count as MFA, I can reshape this into a tighter, numbered test suite with priorities (P0/P1/P2) and exact expected outcomes per policy.
